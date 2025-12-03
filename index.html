@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>简易图片去水印工具</title>
+    <title>Web 图片去水印工具 (支持撤销/重做)</title>
     <style>
         :root {
             --primary: #4f46e5;
             --bg: #1f2937;
             --panel: #111827;
             --text: #f3f4f6;
+            --danger: #ef4444;
         }
 
         body {
@@ -31,13 +32,19 @@
             text-align: center;
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
             z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            height: 60px;
         }
 
-        h1 { margin: 0; font-size: 1.2rem; font-weight: 500; letter-spacing: 1px;}
+        h1 { font-size: 1.1rem; font-weight: 500; }
+        .shortcuts { font-size: 0.8rem; color: #9ca3af; }
 
         .toolbar {
             display: flex;
-            gap: 15px;
+            gap: 12px;
             padding: 10px;
             background-color: var(--panel);
             border-radius: 8px;
@@ -45,23 +52,26 @@
             flex-wrap: wrap;
             justify-content: center;
             align-items: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
         button, label.btn {
             background-color: #374151;
             border: 1px solid #4b5563;
             color: white;
-            padding: 8px 16px;
+            padding: 8px 14px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.9rem;
             transition: all 0.2s;
             display: inline-flex;
             align-items: center;
+            gap: 5px;
             user-select: none;
         }
 
-        button:hover, label.btn:hover { background-color: #4b5563; }
+        button:hover:not(:disabled), label.btn:hover { background-color: #4b5563; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
         
         button.active {
             background-color: var(--primary);
@@ -86,6 +96,7 @@
             background-size: 20px 20px;
             background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
             cursor: crosshair;
+            margin-top: 10px;
         }
 
         canvas {
@@ -98,13 +109,13 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            background: rgba(0,0,0,0.2);
+            padding: 4px 10px;
+            border-radius: 4px;
         }
 
-        input[type="range"] {
-            accent-color: var(--primary);
-        }
+        input[type="range"] { accent-color: var(--primary); cursor: pointer; }
 
-        /* Brush Cursor Indicator */
         #cursor-circle {
             position: absolute;
             border: 2px solid white;
@@ -114,50 +125,62 @@
             mix-blend-mode: difference;
             display: none;
             z-index: 100;
+            box-shadow: 0 0 2px rgba(0,0,0,0.5);
         }
 
         .hint {
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             color: #9ca3af;
-            margin-top: 5px;
+            background: var(--panel);
+            width: 100%;
+            text-align: center;
+            padding: 5px 0;
+            border-top: 1px solid #374151;
         }
+        
+        .divider { width: 1px; height: 24px; background: #4b5563; margin: 0 5px; }
     </style>
 </head>
 <body>
 
 <header>
-    <h1>Web 去水印工具 (Retouch Tool)</h1>
+    <h1>Web 去水印工具 v2.0</h1>
+    <div class="shortcuts">快捷键: 撤销 (Ctrl+Z) / 重做 (Ctrl+Y) / 取色 (Alt+Click)</div>
 </header>
 
 <div class="toolbar">
     <label class="btn">
-        上传图片
+        📂 打开图片
         <input type="file" id="upload" accept="image/*">
     </label>
 
     <div class="controls">
-        <span>笔刷大小:</span>
-        <input type="range" id="brushSize" min="5" max="100" value="30">
+        <span>笔刷:</span>
+        <input type="range" id="brushSize" min="5" max="150" value="30">
         <span id="brushSizeVal">30</span>
     </div>
 
-    <div style="border-left: 1px solid #4b5563; height: 30px;"></div>
+    <div class="divider"></div>
 
-    <button id="btnClone" class="active" title="克隆印章: 按住Alt点击取色，然后涂抹">克隆印章 (推荐)</button>
-    <button id="btnBlur" title="模糊工具: 适合纯色背景">模糊/平滑</button>
+    <button id="btnClone" class="active" title="克隆印章: 按住Alt点击取色，然后涂抹">🎯 克隆印章</button>
+    <button id="btnBlur" title="模糊工具: 适合纯色背景">💧 模糊/平滑</button>
 
-    <div style="border-left: 1px solid #4b5563; height: 30px;"></div>
+    <div class="divider"></div>
 
-    <button id="btnUndo">撤销</button>
-    <button id="btnSave" style="background-color: #059669; border-color: #059669;">保存图片</button>
+    <button id="btnUndo" disabled title="撤销 (Ctrl+Z)">↩️ 撤销</button>
+    <button id="btnRedo" disabled title="重做 (Ctrl+Y)">↪️ 重做</button>
+    
+    <div class="divider"></div>
+
+    <button id="btnSave" style="background-color: #059669; border-color: #059669;">💾 保存</button>
 </div>
-
-<div class="hint" id="statusText">当前模式：克隆印章 (请按住 Alt 键 + 鼠标左键点击图片选择干净区域，然后涂抹水印)</div>
 
 <div class="canvas-container" id="container">
     <div id="cursor-circle"></div>
     <canvas id="canvas"></canvas>
 </div>
+
+<div class="hint" id="statusText">当前模式：克隆印章 (1. 按住 Alt+左键点击干净区域取样 2. 涂抹水印)</div>
 
 <script>
     const canvas = document.getElementById('canvas');
@@ -166,29 +189,68 @@
     const cursor = document.getElementById('cursor-circle');
     const uploadInput = document.getElementById('upload');
     const statusText = document.getElementById('statusText');
+    const btnUndo = document.getElementById('btnUndo');
+    const btnRedo = document.getElementById('btnRedo');
     
     // State
     let isDrawing = false;
-    let mode = 'clone'; // 'clone' or 'blur'
+    let mode = 'clone'; 
     let brushSize = 30;
-    
-    // Clone Tool State
-    let cloneSource = null; // {x, y}
-    
-    // Undo History
-    let historyStack = [];
-    const MAX_HISTORY = 20;
+    let cloneSource = null; 
+    let currentOffset = null;
 
-    // --- Initialization ---
-    function resizeCanvas(img) {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        saveState();
+    // --- History System (Undo/Redo) ---
+    // Using ImageData is faster than DataURL for frequent drawing
+    let historyStack = [];
+    let historyStep = -1;
+    const MAX_HISTORY = 30;
+
+    function initHistory(width, height) {
+        historyStack = [];
+        historyStep = -1;
+        saveState(); // Save initial blank or loaded state
     }
 
-    // --- Event Listeners ---
-    
+    function saveState() {
+        historyStep++;
+        // If we are in the middle of history and draw new stuff, remove future states
+        if (historyStep < historyStack.length) {
+            historyStack.length = historyStep;
+        }
+        // Save full canvas state
+        historyStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        
+        // Limit memory usage
+        if (historyStack.length > MAX_HISTORY) {
+            historyStack.shift();
+            historyStep--;
+        }
+        updateHistoryButtons();
+    }
+
+    function undo() {
+        if (historyStep > 0) {
+            historyStep--;
+            ctx.putImageData(historyStack[historyStep], 0, 0);
+            updateHistoryButtons();
+        }
+    }
+
+    function redo() {
+        if (historyStep < historyStack.length - 1) {
+            historyStep++;
+            ctx.putImageData(historyStack[historyStep], 0, 0);
+            updateHistoryButtons();
+        }
+    }
+
+    function updateHistoryButtons() {
+        btnUndo.disabled = (historyStep <= 0);
+        btnRedo.disabled = (historyStep >= historyStack.length - 1);
+    }
+
+    // --- Main Logic ---
+
     // 1. Upload
     uploadInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -196,7 +258,13 @@
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = new Image();
-            img.onload = () => resizeCanvas(img);
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                initHistory(); // Reset history for new image
+                cloneSource = null; // Reset clone source
+            };
             img.src = event.target.result;
         };
         reader.readAsDataURL(file);
@@ -209,7 +277,7 @@
         updateCursorSize();
     });
 
-    // 3. Tool Selection
+    // 3. Modes
     document.getElementById('btnClone').addEventListener('click', (e) => {
         setMode('clone', e.target);
         statusText.textContent = "当前模式：克隆印章 (按住 Alt+点击 取样，然后涂抹)";
@@ -226,21 +294,37 @@
         if(btn) btn.classList.add('active');
     }
 
-    // 4. Drawing Logic
+    // 4. Drawing Events
     container.addEventListener('mousedown', startDraw);
-    window.addEventListener('mouseup', stopDraw);
+    window.addEventListener('mouseup', stopDraw); // Window to catch release outside canvas
     container.addEventListener('mousemove', (e) => {
         moveCursor(e);
         draw(e);
     });
 
-    // Alt Key Listener for Clone Source
+    // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
+        // Alt for Clone Picker
         if (e.key === 'Alt' && mode === 'clone') {
             container.style.cursor = 'crosshair';
-            cursor.style.borderColor = '#ef4444'; // Red for picking
+            cursor.style.borderColor = '#ef4444';
+        }
+        
+        // Undo/Redo (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            if (e.shiftKey) {
+                redo();
+            } else {
+                undo();
+            }
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            redo();
         }
     });
+
     window.addEventListener('keyup', (e) => {
         if (e.key === 'Alt') {
             container.style.cursor = 'default';
@@ -248,60 +332,64 @@
         }
     });
 
+    // --- Drawing Functions ---
+
     function getMousePos(e) {
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
         return {
             x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY,
-            rawX: e.clientX,
-            rawY: e.clientY
+            y: (e.clientY - rect.top) * scaleY
         };
     }
 
     function startDraw(e) {
         if (!canvas.width) return;
+        
+        // Handle Left Click Only
+        if (e.button !== 0) return;
+
         const pos = getMousePos(e);
 
-        // Handle Clone Source Picking
+        // ALT + Click = Set Clone Source
         if (mode === 'clone' && e.altKey) {
             cloneSource = { x: pos.x, y: pos.y };
-            statusText.textContent = `取样点已设置 (${Math.round(pos.x)}, ${Math.round(pos.y)})。现在请松开 Alt 键开始涂抹。`;
+            statusText.textContent = `✅ 取样点已设置 (${Math.round(pos.x)}, ${Math.round(pos.y)})。松开 Alt 开始涂抹。`;
+            
             // Visual feedback
             const flash = document.createElement('div');
-            flash.style.position = 'fixed';
-            flash.style.left = e.clientX + 'px';
-            flash.style.top = e.clientY + 'px';
-            flash.style.width = '10px';
-            flash.style.height = '10px';
-            flash.style.background = 'red';
-            flash.style.borderRadius = '50%';
-            flash.style.pointerEvents = 'none';
+            Object.assign(flash.style, {
+                position: 'fixed', left: e.clientX+'px', top: e.clientY+'px',
+                width: '10px', height: '10px', background: '#ef4444',
+                borderRadius: '50%', pointerEvents: 'none', zIndex: 1000
+            });
             document.body.appendChild(flash);
-            setTimeout(() => flash.remove(), 500);
+            setTimeout(() => flash.remove(), 400);
             return;
         }
 
         if (mode === 'clone' && !cloneSource) {
-            alert("请先设置克隆源！\n按住 Alt 键，点击图片上干净的区域，然后松开 Alt 开始涂抹。");
+            alert("⚠️ 请先取样！\n\n操作方法：\n按住键盘 Alt 键 -> 鼠标点击干净区域 -> 松开 Alt 键 -> 开始涂抹。");
             return;
         }
 
         isDrawing = true;
-        saveState(); // Save before stroke
         
+        // Setup Context
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.lineWidth = brushSize;
-        
-        // Setup for drawing stroke
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-        
-        // For Clone tool, we need custom logic, standard stroke isn't enough usually
-        // But for simplicity in "live" brush, we use intervals or continuous painting
-        draw(e); 
+
+        // Clone Offset Calculation (Locks the distance between Source and Brush)
+        if (mode === 'clone') {
+            currentOffset = {
+                x: cloneSource.x - pos.x,
+                y: cloneSource.y - pos.y
+            };
+        }
+
+        draw(e);
     }
 
     function draw(e) {
@@ -309,125 +397,50 @@
         const pos = getMousePos(e);
 
         if (mode === 'blur') {
-            // Blur Logic: Average colors under brush
             applyBlur(pos.x, pos.y, brushSize);
-        } else if (mode === 'clone') {
-            // Clone Logic
-            if (!cloneSource) return;
+        } else if (mode === 'clone' && cloneSource && currentOffset) {
             
-            // Calculate offset relative to initial click? 
-            // Simple clone: Copy from source + current_movement
-            // To make it smooth like Photoshop, we calculate offset once per stroke usually, 
-            // but here we do a simple "Stamp" at current mouse pos from source.
+            // We draw "patches" along the path. 
+            // For smoother stroke, we could interpolate, but for clone stamp, patches work okay.
             
-            // Dynamic Clone: 
-            // We need the distance the mouse moved from START of drag.
-            // Simplified approach: Just copy brushSize area from CloneSource to CurrentPos.
-            // But if we drag, we want the source to move WITH the mouse.
-            
-            // To implement "Aligned" cloning properly:
-            // Offset is constant during one stroke.
-            // But let's do a simple unaligned stamp for this lightweight tool or simple dragging.
-            
-            // Better UX for Web Canvas: Copy `source` texture to `dest`.
-            // However, tracking the offset requires `startDraw` to record the 'drag start' pos.
-            // Let's stick to: Source stays static unless we calculate relative movement.
-            
-            // Implementation: Direct copy of patch
-            const r = brushSize / 2;
-            
-            // We want source to move with mouse? Usually yes.
-            // Let's assume user wants to "paint" the texture from source area relative to mouse movement.
-            // This is complex to do perfectly in few lines.
-            // Fallback: Static Clone (Stamp) or simple copying.
-            
-            // Let's do: Source moves with mouse.
-            // Current - Start = Delta. Source = OriginSource + Delta.
-            // We need to store drawStartPos.
-            
-            // SIMPLIFIED VISUAL CLONE:
-            // Just copy the image data from cloneSource to current pos.
-            // To avoid "smearing" one single pixel, we update cloneSource? No.
-            
-            // Let's use `ctx.drawImage` with clipping for performance.
+            const srcX = pos.x + currentOffset.x;
+            const srcY = pos.y + currentOffset.y;
+
             ctx.save();
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, brushSize/2, 0, Math.PI*2);
             ctx.clip();
-            // Draw the image onto itself, shifted
-            // shift amount = currentPos - cloneSource
-            // wait, we want to paint AT pos.x, FROM cloneSource.x
-            // So we draw the image at (pos.x - cloneSource.x, pos.y - cloneSource.y)?
-            // No. If I want to see pixel S at pixel D.
-            // I need to shift the image so S is at D.
-            // Shift = D - S.
-            const shiftX = pos.x - cloneSource.x;
-            const shiftY = pos.y - cloneSource.y;
-            
-            // Wait, standard clone tool: 
-            // User clicks Source (S). User drags from D1 to D2.
-            // We paint at D1 content from S. At D2 content from S + (D2-D1).
-            // This requires tracking stroke start.
-            
-            // Let's keep it simple: Fixed Offset Clone.
-            // When Alt-Click (S), store S.
-            // When MouseDown (Dstart), calculate Offset = S - Dstart.
-            // Current Draw (Dcurr), Source is Dcurr + Offset.
-            
-            if (!window.currentOffset) {
-                 window.currentOffset = {
-                     x: cloneSource.x - pos.x,
-                     y: cloneSource.y - pos.y
-                 };
-            }
-            
-            const srcX = pos.x + window.currentOffset.x;
-            const srcY = pos.y + window.currentOffset.y;
-
-            // Draw a patch
+            // Draw image shifted by offset
+            // We use simple drawImage which is fast
             ctx.drawImage(canvas, 
-                srcX - brushSize/2, srcY - brushSize/2, brushSize, brushSize, // Source
-                pos.x - brushSize/2, pos.y - brushSize/2, brushSize, brushSize // Dest
+                srcX - brushSize/2, srcY - brushSize/2, brushSize, brushSize, // Source Rect
+                pos.x - brushSize/2, pos.y - brushSize/2, brushSize, brushSize // Dest Rect
             );
-            
             ctx.restore();
         }
     }
 
     function stopDraw() {
-        isDrawing = false;
-        window.currentOffset = null; // Reset offset for next stroke
+        if (isDrawing) {
+            isDrawing = false;
+            currentOffset = null;
+            saveState(); // Save state AFTER the stroke is finished
+        }
     }
 
     function applyBlur(x, y, size) {
-        // Performance heavy if done pixel by pixel.
-        // Quick hack: Draw the canvas onto itself with a filter? No, that blurs everything.
-        // We use a small temporary canvas to blur just that area.
-        
         const r = size / 2;
-        const sx = Math.max(0, x - r);
-        const sy = Math.max(0, y - r);
-        const w = Math.min(canvas.width - sx, size);
-        const h = Math.min(canvas.height - sy, size);
-        
-        if (w <= 0 || h <= 0) return;
-
-        // Get data
-        // For a true smooth blur, simple averaging is okay.
-        // Better: StackBlur or similar, but too much code.
-        // Simplest: Use ctx.filter (modern browsers).
-        
         ctx.save();
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.clip();
-        ctx.filter = 'blur(4px)'; // The blur strength
-        ctx.drawImage(canvas, 0, 0); // Draw canvas onto itself
+        ctx.filter = 'blur(4px)'; 
+        ctx.drawImage(canvas, 0, 0); 
         ctx.restore();
         ctx.filter = 'none';
     }
 
-    // --- Cursor UI ---
+    // --- UI Helpers ---
     function moveCursor(e) {
         cursor.style.display = 'block';
         cursor.style.left = e.clientX + 'px';
@@ -443,30 +456,13 @@
     container.addEventListener('mouseleave', () => cursor.style.display = 'none');
     updateCursorSize();
 
-
-    // --- Undo/Save ---
-    function saveState() {
-        if (historyStack.length >= MAX_HISTORY) {
-            historyStack.shift();
-        }
-        historyStack.push(canvas.toDataURL());
-    }
-
-    document.getElementById('btnUndo').addEventListener('click', () => {
-        if (historyStack.length <= 1) return; // Keep initial state
-        historyStack.pop(); // Remove current state
-        const prevState = historyStack[historyStack.length - 1];
-        const img = new Image();
-        img.onload = () => {
-            ctx.clearRect(0,0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-        };
-        img.src = prevState;
-    });
+    // Button Listeners
+    btnUndo.addEventListener('click', undo);
+    btnRedo.addEventListener('click', redo);
 
     document.getElementById('btnSave').addEventListener('click', () => {
         const link = document.createElement('a');
-        link.download = 'removed_watermark.png';
+        link.download = `removed_${Date.now()}.png`;
         link.href = canvas.toDataURL();
         link.click();
     });
